@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Statement Counter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<!-- pdf.js (Mozilla, open source) reads the PDF text. Loading the worker as a plain
+     script makes pdf.js run on this page instead of in a separate network-loaded worker. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+
+<style>
+:root{
+  --bg:#F2F4F3; --surface:#FFFFFF; --ink:#16201B; --muted:#5B6861; --line:#D3DAD6;
+  --shop:#2F6F8F; --deliv:#D0891E; --warn:#B3402A;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121815; --surface:#1B221F; --ink:#E4EAE6; --muted:#97A39C; --line:#2F3A35;
+    --shop:#5AA3C7; --deliv:#E6A548; --warn:#E3664F;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121815; --surface:#1B221F; --ink:#E4EAE6; --muted:#97A39C; --line:#2F3A35;
+  --shop:#5AA3C7; --deliv:#E6A548; --warn:#E3664F;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.5}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--shop);outline-offset:2px}
+.wrap{max-width:680px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:2.1rem;font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:0 0 8px}
+h2{font-size:1.2rem;font-weight:700;margin:36px 0 12px}
+.lead{color:var(--muted);margin:0 0 6px;max-width:60ch}
+.privacy{font-size:.92rem;color:var(--muted);margin:0 0 24px;max-width:60ch}
+
+.drop{display:block;border:2px dashed var(--line);border-radius:14px;background:var(--surface);
+  padding:34px 20px;text-align:center;cursor:pointer;transition:border-color .15s}
+.drop.over{border-color:var(--shop)}
+.drop strong{display:block;font-size:1.1rem}
+.drop span{color:var(--muted);font-size:.95rem}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.status{margin:12px 0 0;color:var(--muted);min-height:1.5em}
+
+details.rules{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+details.rules summary{cursor:pointer;font-weight:600}
+.rules label{display:block;font-size:.92rem;font-weight:600;margin:12px 0 4px}
+.rules input{width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--bg)}
+.rules p{font-size:.9rem;color:var(--muted);margin:10px 0 0}
+
+/* Total: the one bold element */
+.total{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 20px}
+.split{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:12px}
+.split .side{display:flex;flex-direction:column}
+.split .side.right{text-align:right}
+.split .pct{font-size:clamp(2.4rem,11vw,3.6rem);font-weight:800;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.split .name{font-weight:600;margin-top:4px}
+.split .n{color:var(--muted);font-size:.92rem;font-variant-numeric:tabular-nums}
+.shop{color:var(--shop)} .deliv{color:var(--deliv)}
+.bar{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--line)}
+.bar i{display:block;height:100%}
+.bar .a{background:var(--shop)} .bar .b{background:var(--deliv)}
+.bar.small{height:10px;border-radius:4px}
+.foot{color:var(--muted);font-size:.9rem;margin:12px 0 0}
+
+.weeks{list-style:none;padding:0;margin:0}
+.weeks li{padding:14px 0;border-bottom:1px solid var(--line)}
+.weeks .top{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}
+.weeks .file{font-weight:600;overflow-wrap:anywhere}
+.weeks .nums{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted);font-size:.95rem}
+.warn{color:var(--warn);font-size:.9rem;margin-top:6px}
+
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.btn{padding:12px 16px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font-weight:600;cursor:pointer}
+
+.debug{margin-top:12px}
+.debug .scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.debug table{border-collapse:collapse;width:100%;font-size:.85rem}
+.debug td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+.debug td.text{white-space:normal;min-width:260px}
+.debug tr.hit-orderPay td.kind{color:var(--shop);font-weight:700}
+.debug tr.hit-delivery td.kind{color:var(--deliv);font-weight:700}
+.debug tr.hit-tip td.kind{color:var(--muted);font-weight:700}
+.debug h3{font-size:1rem;margin:18px 0 6px}
+.note{font-size:.9rem;color:var(--muted)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Statement Counter</h1>
+  <p class="lead">Drop in your Uber weekly statements to see how many of your orders were Order and pay versus regular Delivery.</p>
+  <p class="privacy">Your PDFs are read inside this browser tab and never uploaded. To check, load this page, turn off Wi-Fi, then add your files: it still works.</p>
+
+  <label class="drop" id="drop">
+    <input type="file" id="fileInput" accept=".pdf,application/pdf" multiple>
+    <strong>Choose statements or drop them here</strong>
+    <span>PDF files, as many weeks as you like</span>
+  </label>
+  <p class="status" id="status" aria-live="polite"></p>
+
+  <details class="rules">
+    <summary>Matching rules</summary>
+    <label for="lblOrder">Order and pay rows contain</label>
+    <input id="lblOrder" value="Order and pay">
+    <label for="lblDelivery">Delivery rows contain</label>
+    <input id="lblDelivery" value="Delivery">
+    <label for="lblTip">Ignore rows containing</label>
+    <input id="lblTip" value="Tip">
+    <p>Each row counts once. Ignored rows are checked first, then Order and pay, then Delivery. Matching starts after the "Transactions" heading when one is found.</p>
+  </details>
+
+  <section id="results" class="hidden">
+    <h2>All weeks</h2>
+    <div class="total" id="total"></div>
+
+    <h2>By statement</h2>
+    <ul class="weeks" id="weeks"></ul>
+
+    <div class="toolbar">
+      <button class="btn" id="debugBtn" aria-expanded="false">Show extracted text</button>
+      <button class="btn" id="resetBtn">Clear all</button>
+    </div>
+    <div class="debug hidden" id="debug">
+      <p class="note">Rows from each Transactions table, with dollar amounts hidden. This is only on your screen. Use it to check that every row was sorted correctly.</p>
+      <div id="debugBody"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ------------------------------------------------------------------
+   Statement Counter
+   1. Read each PDF's text with pdf.js, entirely in this tab.
+   2. Rebuild text lines by grouping words that share a vertical position.
+   3. Drop page headers and footers (lines repeated on several pages).
+   4. Classify each line in the Transactions section by its label.
+   Nothing is sent anywhere; results live only in memory.
+------------------------------------------------------------------- */
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const statements = [];   // { name, lines: [{page, text}] }
+const $ = id => document.getElementById(id);
+
+/* ---------- Step 1 and 2: PDF to lines ---------- */
+async function readLines(file) {
+  const data = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data, isEvalSupported: false }).promise;
+  const lines = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const rows = [];
+
+    for (const item of content.items) {
+      if (!item.str || !item.str.trim()) continue;
+      const x = item.transform[4];
+      const y = item.transform[5];
+      // Words within 3 points vertically belong to the same line.
+      let row = rows.find(r => Math.abs(r.y - y) < 3);
+      if (!row) { row = { y, words: [] }; rows.push(row); }
+      row.words.push({ x, s: item.str });
+    }
+
+    rows.sort((a, b) => b.y - a.y);              // PDF y grows upward, so sort top to bottom
+    for (const row of rows) {
+      row.words.sort((a, b) => a.x - b.x);       // left to right
+      const text = row.words.map(w => w.s.trim()).join(' ').replace(/\s+/g, ' ').trim();
+      if (text) lines.push({ page: p, text });
+    }
+  }
+  return lines;
+}
+
+/* ---------- Step 3 and 4: classify ---------- */
+function phrase(label) {
+  // Whole-phrase, case-insensitive match; spaces may be any whitespace.
+  const escaped = label.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return escaped ? new RegExp('\\b' + escaped + '\\b', 'i') : null;
+}
+
+function classify(lines) {
+  const rules = {
+    tip: phrase($('lblTip').value),
+    orderPay: phrase($('lblOrder').value),
+    delivery: phrase($('lblDelivery').value)
+  };
+  const kindOf = text => {
+    if (rules.tip && rules.tip.test(text)) return 'tip';
+    if (rules.orderPay && rules.orderPay.test(text)) return 'orderPay';
+    if (rules.delivery && rules.delivery.test(text)) return 'delivery';
+    return null;
+  };
+
+  // Headers and footers: the same text on 2+ pages, with page numbers ignored.
+  const norm = t => t.replace(/\bpage\s*\d+(\s*(of|\/)\s*\d+)?/i, 'page #').toLowerCase();
+  const pagesFor = new Map();
+  lines.forEach(l => {
+    const k = norm(l.text);
+    if (!pagesFor.has(k)) pagesFor.set(k, new Set());
+    pagesFor.get(k).add(l.page);
+  });
+  const isRepeated = l => pagesFor.get(norm(l.text)).size > 1;
+
+  // Only look after the "Transactions" heading, if there is one.
+  const start = lines.findIndex(l => /^transactions\b/i.test(l.text));
+  const scope = start >= 0 ? lines.slice(start + 1) : lines;
+
+  const counts = { orderPay: 0, delivery: 0, tip: 0 };
+  const rows = [];
+  for (const l of scope) {
+    const kind = kindOf(l.text);
+    if (!kind && isRepeated(l)) continue;        // skip header/footer lines (this hides the name footer too)
+    if (kind) counts[kind]++;
+    rows.push({ page: l.page, text: l.text, kind });
+  }
+  return { counts, rows, foundHeading: start >= 0 };
+}
+
+/* ---------- Rendering ---------- */
+const pct = (a, total) => total ? Math.round(a / total * 100) : 0;
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const hideMoney = s => s.replace(/-?\$\s?\d[\d,]*(\.\d{2})?/g, '$••').replace(/\b\d{1,3}(,\d{3})*\.\d{2}\b/g, '••');
+const bar = (a, b, cls = '') => {
+  const t = a + b;
+  return `<div class="bar ${cls}" role="img" aria-label="${pct(a, t)}% Order and pay, ${pct(b, t)}% Delivery">` +
+         (t ? `<i class="a" style="width:${a / t * 100}%"></i><i class="b" style="width:${b / t * 100}%"></i>` : '') + `</div>`;
+};
+const KIND_LABEL = { orderPay: 'Order and pay', delivery: 'Delivery', tip: 'Ignored' };
+
+function render() {
+  $('results').classList.toggle('hidden', statements.length === 0);
+  if (!statements.length) return;
+
+  const results = statements.map(s => ({ name: s.name, ...classify(s.lines) }));
+  const A = results.reduce((n, r) => n + r.counts.orderPay, 0);
+  const B = results.reduce((n, r) => n + r.counts.delivery, 0);
+
+  $('total').innerHTML = `
+    <div class="split">
+      <div class="side"><span class="pct shop">${pct(A, A + B)}%</span><span class="name">Order and pay</span><span class="n">${A} orders</span></div>
+      <div class="side right"><span class="pct deliv">${pct(B, A + B)}%</span><span class="name">Delivery</span><span class="n">${B} orders</span></div>
+    </div>
+    ${bar(A, B)}
+    <p class="foot">${A + B} orders across ${results.length} ${results.length === 1 ? 'statement' : 'statements'}.</p>`;
+
+  $('weeks').innerHTML = results.map(r => {
+    const a = r.counts.orderPay, b = r.counts.delivery;
+    const warnings = [];
+    if (!r.foundHeading) warnings.push('No "Transactions" heading found, so the whole document was searched.');
+    if (a + b === 0) warnings.push('No matching rows. Check the extracted text and the matching rules.');
+    return `<li>
+      <div class="top"><span class="file">${esc(r.name)}</span>
+        <span class="nums">${a} order and pay, ${b} delivery (${pct(a, a + b)}%)</span></div>
+      ${bar(a, b, 'small')}
+      ${warnings.map(w => `<div class="warn">${w}</div>`).join('')}
+    </li>`;
+  }).join('');
+
+  $('debugBody').innerHTML = results.map(r => `
+    <h3>${esc(r.name)}</h3>
+    <div class="scroll"><table>
+      ${r.rows.map(row => `<tr class="${row.kind ? 'hit-' + row.kind : ''}">
+        <td>p${row.page}</td><td class="kind">${row.kind ? KIND_LABEL[row.kind] : '–'}</td>
+        <td class="text">${esc(hideMoney(row.text))}</td></tr>`).join('')}
+    </table></div>`).join('');
+}
+
+/* ---------- File handling ---------- */
+async function addFiles(fileList) {
+  const files = [...fileList].filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+  if (!files.length) { $('status').textContent = 'Those files aren\u2019t PDFs. Choose your weekly statement PDFs.'; return; }
+
+  let done = 0, skipped = 0, failed = [];
+  for (const file of files) {
+    if (statements.some(s => s.name === file.name)) { skipped++; continue; }
+    $('status').textContent = `Reading ${file.name} (${done + 1} of ${files.length})\u2026`;
+    try { statements.push({ name: file.name, lines: await readLines(file) }); done++; }
+    catch (e) { failed.push(file.name); }
+  }
+  statements.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  const parts = [`Read ${done} ${done === 1 ? 'statement' : 'statements'}.`];
+  if (skipped) parts.push(`Skipped ${skipped} already added.`);
+  if (failed.length) parts.push(`Couldn\u2019t read: ${failed.join(', ')}.`);
+  $('status').textContent = parts.join(' ');
+  render();
+}
+
+$('fileInput').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
+['lblOrder', 'lblDelivery', 'lblTip'].forEach(id => $(id).addEventListener('input', render));
+
+$('debugBtn').addEventListener('click', () => {
+  const open = $('debug').classList.toggle('hidden') === false;
+  $('debugBtn').setAttribute('aria-expanded', open);
+  $('debugBtn').textContent = open ? 'Hide extracted text' : 'Show extracted text';
+});
+$('resetBtn').addEventListener('click', () => {
+  statements.length = 0; $('status').textContent = ''; render();
+});
+
+if (typeof pdfjsLib === 'undefined') {
+  $('status').textContent = 'The PDF reader didn\u2019t load. Reconnect to the internet, reload the page, then you can go offline.';
+}
+</script>
+</body>
+</html>
